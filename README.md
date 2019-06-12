@@ -1,5 +1,4 @@
 # VB_Excel
 
-changes from original master
-
-further change to check commit changes functionality
+Some Files saved as text files
+Some files saved as Vb Visual Basic format
