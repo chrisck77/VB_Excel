@@ -1,0 +1,161 @@
+Public box2 As Variant
+Sub combinefailures()
+'routine for clicking on button on excel sheet
+combinef.Show 'user form, where 2 or more tests can be selected -->< in this case tests = individual Relaibilty Calculations
+
+End Sub
+'___________________________________________________________________________________________
+'___________________________________________________________________________________________
+Private Sub UserForm_Activate() 'routine to fill in user form
+
+Dim box2 As Variant
+Dim box5 As Variant
+box1 = ete2(box2)'call another function to enter data into array
+N = Sheets("Results tab").Range("C1") - 1 'find No. tests available to add to user form
+With LB1
+    For p = 1 To N 'add tests to form --> concatenating data from array cells (original different excel cells) into 1 combined entry on user form that is more descriptive
+        k = p & "    " & box2(p, 0) & " " & box2(p, 3) & " " & box2(p, 4) & " " & box2(p, 5) & " " & box2(p, 6) & " " & box2(p, 7) & " " & box2(p, 8) & " " & box2(p, 1) & " " & box2(p, 2)
+        .AddItem k
+    Next p
+End With
+End Sub
+'___________________________________________________________________________________________
+Function ete2(box2 As Variant)
+'function to extract data from excel and put into an array ready to fill in user form
+On Error GoTo error
+    N = Sheets("Results tab").Range("C1") - 1 'No.s of calcs done
+
+ReDim box2(1 To N, 9)
+For p = 1 To UBound(box2) 'enter spreadsheet data into array
+    box2(p, 0) = Sheets("Results tab").Range("A" & p + 5)  '
+    box2(p, 1) = Sheets("Results tab").Range("B" & p + 5)  '
+    box2(p, 2) = Sheets("Results tab").Range("C" & p + 5)  '
+    box2(p, 3) = Sheets("Results tab").Range("D" & p + 5)  '
+    box2(p, 4) = Sheets("Results tab").Range("E" & p + 5)  '
+    box2(p, 5) = Sheets("Results tab").Range("F" & p + 5)  '
+    box2(p, 6) = Sheets("Results tab").Range("J" & p + 5)  '
+    box2(p, 7) = Sheets("Results tab").Range("K" & p + 5)  '
+    box2(p, 8) = Sheets("Results tab").Range("L" & p + 5)  '
+    box2(p, 9) = Sheets("Results tab").Range("G" & p + 5)  '
+Next p
+error:
+ete2 = box2
+End Function
+'___________________________________________________________________________________________
+Private Sub OK_Click() 
+'after user has selected the entries from the drop down list to combine, this routine then combines the data
+'and calculates overall Releiabilities --> using excel solver tool to assist (as cannot be solved empirically)
+a = 10
+b = 0
+For i = 0 To LB1.ListCount - 1 'find out how many tests selected for redimensioning the array
+  If LB1.Selected(i) Then
+	  a = LB1.List(i)
+	  b = b + 1
+  End If
+Next i
+
+'concentrate on combining 2 failure modes at this stage (2 tests / 2 Reliability calculations)
+If b <> 2 Then 'routing to check only 2 tests have been selected
+MsgBox ("only combine 2 individual results at this stage")
+End
+End If
+
+
+ReDim box5(1 To b + 1, 709) 'each test has 709 attributes, 75 distinct weekly or user enter time division calcs for BX, Relaibilty @ 2 life cycle times etc)
+b = 0
+
+For i = 0 To LB1.ListCount - 1 'enter data for each test that user has selected into array of X tests x P attributes of the test
+	If LB1.Selected(i) Then
+	a = LB1.List(i)
+	T = i + 6
+	b = b + 1
+		For p = 0 To 709 
+		box5(b, p) = Sheets("Results tab").Cells(T, p + 1)
+		Next p		
+	End If
+Next i
+a = 0
+
+'routine to check individual analysis targets match, ie each test has BX Reliability calculated at specific X value etc, can only combine if calculated at same X value (easily re-calculate if not)
+For p = 6 To 9 
+    If box5(1, p) <> box5(2, p) Then
+    MsgBox ("analysis targets of individual tests don't match")
+    End
+    Else
+    box5(3, p) = box5(1, p)
+    End If
+Next p
+
+'3 routines for listing the individual tests analysis details, beta, eta values etc and putting into seperate combined array
+For p = 0 To 5 
+box5(3, p) = "1.) " & box5(1, p) & Chr(10) & "2.) " & box5(2, p)
+Next p
+For p = 10 To 11
+box5(3, p) = "1.) " & box5(1, p) & Chr(10) & "2.) " & box5(2, p)
+Next p
+For p = 697 To 702
+box5(3, p) = "1.) " & box5(1, p) & Chr(10) & "2.) " & box5(2, p)
+Next p
+
+' 2 routines for calculating all combined realibilities at BX (this part is simple multiplying realiabilities
+For p = 12 To 17 
+box5(3, p) = box5(1, p) * box5(2, p)
+Next p
+For p = 22 To 471
+box5(3, p) = box5(1, p) * box5(2, p)
+Next p
+
+
+n2 = Sheets("Combined Reliability Results").Range("B1") - 1 'No.s of calcs done, in order to find empty row
+  Sheets("Combined Reliability Results").Cells(n2 + 6, 1) = Format(Now(), "MM/DD/YYYY") 'DATE
+
+'enter the combined reliability data into excel from the array
+For p = 0 To 709
+Sheets("Combined Reliability Results").Cells(n2 + 6, p + 2) = box5(3, p)
+Next p
+
+'----------------------------------------------------------------------
+'----------------------------------------------------------------------
+'formulas for combining 2 or more tests/Releiabilities --> includes SOLVER routine further down
+
+'at the moment only 2 tests can be combined, formulas below for combining 2 or 3 tests
+'If b = 2 Then
+ 'use formula 2 lines above, at moment this routine is only for b=2 so this is later extension for b =3 etc
+ Sheets("Combined Reliability Results").Range("H" & n2 + 6).Formula = "=100*(1-(EXP(-((U" & n2 + 6 & "/" & box5(1, 698) & ")^" & box5(1, 697) & "))*EXP(-((U" & n2 + 6 & "/" & box5(2, 698) & ")^" & box5(2, 697) & "))))"
+'ElseIf b = 3 Then
+ 'for combining 3 failure modes
+ 'Sheets("Combined Reliability Results").Range("H" & n2 + 6).Formula = "=100*(1-(EXP(-((U" & n2 + 6 & "/" & box5(1, 698) & ")^" & box5(1, 697) & "))*EXP(-((U" & n2 + 6 & "/" & box5(2, 698) & ")^" & box5(2, 697) & "))*EXP(-((U" & n2 + 6 & "/" & box5(3, 698) & ")^" & box5(3, 697) & "))))"
+'End If
+a_count = 1
+'----------------------------------------------------------------------
+'time to BX analysis --> USING SOLVER
+Sheets("Combined Reliability Results").Select
+solver_st = 2000000 'first starting value for solver
+Do While a_count < 7
+a_count = a_count + 1
+Sheets("Combined Reliability Results").Range("U" & n2 + 6) = solver_st ' cell of the time t set to initial value
+
+solverreset 'otpions for solver
+SolverOptions precision:=0.0001
+SolverOk SetCell:="H" & n2 + 6, MaxMinVal:=3, ValueOf:=5, ByChange:="U" & n2 + 6, Engine _
+:=1, EngineDesc:="GRG Nonlinear"
+SolverAdd cellRef:="U" & n2 + 6, relation:=3, formulaText:="1" 'time must be >1
+SolverSolve UserFinish:=True   'solve
+    
+    If Sheets("Combined Reliability Results").Range("H" & n2 + 6) < 6 And Sheets("Combined Reliability Results").Range("H" & n2 + 6) > 4 Then 'if we have a good result then don't re-do the solver
+    a_count = 16
+    End If
+    solver_st = solver_st / 10 'if cannot solve starting at intial starting point then try again at factor of 10 less each time
+Loop
+'_________________________________________________________________________________________
+
+error:
+
+End
+
+End Sub
+
+
+
+
+
