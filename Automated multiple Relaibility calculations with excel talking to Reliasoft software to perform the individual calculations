@@ -1,0 +1,721 @@
+Sub Macro7()
+
+Dim weibulclase As News  'WeibullDataSet
+Set weibulclase = New News 'WeibullDataSet 'class object
+
+Dim betas, CIS As Integer
+
+' This Macro collects data, puts in table and runs caluclation with
+'relibaility parameters selected from drop-down boxes (with and without confidence calculated also)
+'runs the calculation 75 times using RELIASOFT software if needed
+
+Application.ScreenUpdating = False
+
+we = Sheets("Notes").Range("B20") 'list box value for type of anlaysis, Weibull, Weibayes etc, we =1 then weibayess has been selected
+wepar = Sheets("Notes").Range("D20") 'another listbox parameter for WEIBULL type --> 1 param' or '2 param' etc
+'some flags to be used later - some associated with there not being enough date to run 2-parameter so 1-paramter is performed, using data from 2-parameter,
+'also when it switches from1 to 2 paramter is noted (ie when more failures are discovered can now switch to 2-parameter
+hflag = 8 
+hflag2 = 8
+hflag3 = 8
+hflag4 = 8 ' weibull 2 parameter (2 or more failures) ran on currnet hours but switched to 1 parameter at some point
+hflag5 = 8 ' weibull 2 parameter (2 or more failures) ran on currnet hours but switched to 1 parameter at some point
+dateofswitch = "no-switch" 'set to no-swtich, will be changed later, swtiches from 1 parameter to 2 parameter when more data /failrues are discovered as the test progresses
+
+Dim box1 As Variant
+Dim box4 As Variant
+
+AF = Sheets("Analysis").Range("B1") 'aggravation factor code for a test selected by user in list box is put into varaible
+Sheets("Analysis").Range("D16:G1000").ClearContents 'edata used for each weekly (or user selected tiem fram) calculation is entered into excel for de-bugging etc --> can be removed later for faster processing
+Sheets("Analysis").Range("k16:k1000").ClearContents
+  
+If ActiveSheet.Range("D1") = True Then
+box2 = ete1(box1) 'Seperate fucntions for adding data (paramaters for Reliability calculation) into arrays for the Relaibility calculation
+End If
+box3 = ete4(box4)
+'------------------------------------------------------------------------------------------------
+ ' ADD S OR F AND AGGRAVATION FACTOR TO DATA FROM 'DATA' TAB, each test has associated aggravation and/or acceleartion factor which is in a table that can now be looked-up
+For p = 1 To UBound(box3)
+          
+ww = Sheets("Data").Range("A" & box3(p, 1))
+    
+    If Sheets("Analysis").Range("H5") = False Then 'APPLY ACCELERATION FACTORS IF REQUIRED
+    AF2 = 1
+    Else
+        If Sheets("Data").Range("C" & box3(p, 1)) = "" Then
+        MsgBox ("choose a test type for each test --> column C on Data sheet")
+        GoTo error
+        End If
+    AF2 = Sheets("Data").Range("G2").Offset(Sheets("Data").Range("A" & box3(p, 1)), AF)
+        '_______________________________________________________
+        'HERE ADD THE ADDITIONAL APPLICATION AGGRAVATION FACTORS
+        If Sheets("Analysis").Range("J5") = False Then AF3 = 1 Else AF3 = Sheets("Analysis").Range("K5")
+        AF2 = AF2 * AF3
+        '_______________________________________________________
+    End If
+    
+box3(p, 2) = AF2 * Sheets("Data").Range("H" & box3(p, 1)) 'first hours (first datebox)
+box3(p, 79) = AF2 * Sheets("Data").Range("E" & box3(p, 1)) 'max hours (current hours)
+           
+    For N = 1 To 75 '________ROUTINE TO APPLY AF TO HRS VALUES IN ARRAY
+    'obtain value at date (if blank then max value so far
+    box3(p, N + 3) = AF2 * Application.WorksheetFunction.Max(Sheets("Data").Range(Sheets("Data").Range("H" & box3(p, 1)).Address & ":" & Sheets("Data").Range("H" & box3(p, 1)).Offset(0, N - 1).Address))
+    'OLD CODE to get current value for that date (if no date entered then it will reutrn 0 - not desirable
+    'box3(p, n + 3) = AF2 * Sheets("Data").Range("H" & box3(p, 1)).Offset(0, n - 1)
+    Next N
+    
+box3(p, 3) = Sheets("Data").Range("F" & box3(p, 1)) '__ROUTINE TO ADD S OR F DEPENDING IN WHICH FAILURE MODE WAS SELECTED ON ANALYSIS FOR EVALUATION
+    If box3(p, 3) = "F" And Sheets("Data").Range("G" & box3(p, 1)) = Sheets("Notes").Range("M33") Then
+    box3(p, 3) = "F"
+    Else
+    box3(p, 3) = "S"
+    End If
+    
+Next p
+   
+'j = UBound(box2)
+ j = Worksheets("Analysis").Range("D10").Value 'no's of historic tests already added--> I.E DATA IN THE TABLE FROM CELL D14 ONWARDS, assuming data has already been added as historic test data is added first
+'______________________________________________________________________________________
+'ROUTINE TO ADD RUNNNING DATA TO DATA SET - STARTS WITH CURRNET HOURS
+Nof = 0 'reset failure number count
+For p = 1 To UBound(box3) 'enter array data onto calcs sheet
+Sheets("Analysis").Range("E" & j + 15 + p) = box3(p, 79) 'hours with aggrvation factor applied "(E" & P +14)
+Sheets("Analysis").Range("G" & j + 15 + p) = box3(p, 0) 'test details ("G" & P +14)
+Sheets("Analysis").Range("D" & j + 15 + p) = box3(p, 3)
+'If box3(p, 3) = "R" Then
+'Sheets("Analysis").Range("D" & j + 15 + p) = "S"
+'Else
+'Sheets("Analysis").Range("D" & j + 15 + p) = box3(p, 3) 'S or F ("D" & P + 14)
+'End If
+    If we = "Weibayes" Then '1 PARAM WEIBULL/ WAIBAYES
+    Sheets("Analysis").Range("K" & j + 15 + p) = (Sheets("Analysis").Range("e" & j + 15 + p)) ^ Sheets("Analysis").Range("D7") ' t^beta,
+    End If
+    If box3(p, 3) = "F" Then
+    Nof = Nof + 1 'counting number of failures at this time stamp
+    End If
+Next p
+'______________________________________________________________________________________
+it = Sheets("Analysis").Range("K3") 'no's of analysis performed so far
+    
+ If we = "Weibayes" Then
+ '__________________________________________________________________________
+'1P WEIBAYES EQUATIONS - HERE ARE THE FORMULAS FOR DOING 1 PARAMETER WEIBULL, 2 PARAMETER IS DONE BY RELIASOFT
+Rel_target = (100 - Sheets("Analysis").Range("E3")) / 100
+life_target = Sheets("Analysis").Range("C5")
+warranty_target = Sheets("Analysis").Range("D5")
+Logr = Log(Rel_target)
+LogE = Log(Exp(1))
+minus_ln_reltaret = -(Logr / LogE)
+beta1p = Sheets("Analysis").Range("d7")
+Confidence1p = Sheets("Analysis").Range("f3")
+failures1p = Sheets("Analysis").Range("B10")
+CHISQa = Application.ChiInv((1 - 0.5), (2 * failures1p + 2))
+CHISQconf = Application.ChiInv((1 - Confidence1p), 2 * failures1p + 2)
+sum_t_beta = Application.Sum(Sheets("Analysis").Range("k16:K100")) ' max 100 points
+
+    If sum_t_beta <> 0 Then
+    eta1p = (2 * sum_t_beta / CHISQa) ^ (1 / beta1p)
+    eta1pconf_low = (2 * sum_t_beta / CHISQconf) ^ (1 / beta1p)
+    bx = (minus_ln_reltaret ^ (1 / beta1p)) * eta1p
+    bxconf = (minus_ln_reltaret ^ (1 / beta1p)) * eta1pconf_low
+    rel_life = Exp(-((life_target / eta1p) ^ beta1p))
+    rel_life_low = Exp(-((life_target / eta1pconf_low) ^ beta1p))
+    rel_warranty = Exp(-((warranty_target / eta1p) ^ beta1p))
+    rel_warranty_low = Exp(-((warranty_target / eta1pconf_low) ^ beta1p))
+    
+    'values entered onto results tab
+    Sheets("Results tab").Range("n5").Offset(it, 0) = rel_life ' Rell
+    Sheets("Results tab").Range("m5").Offset(it, 0) = rel_life_low ' lowl
+    Sheets("Results tab").Range("q5").Offset(it, 0) = rel_warranty 'Relw
+    Sheets("Results tab").Range("p5").Offset(it, 0) = rel_warranty_low  'loww
+    Sheets("Results tab").Range("t5").Offset(it, 0) = bx 'b5
+    Sheets("Results tab").Range("s5").Offset(it, 0) = bxconf 'lowb5w
+    Sheets("Results tab").Range("zv5").Offset(it, 0) = beta1p 'beta
+    Sheets("Results tab").Range("zz5").Offset(it, 0) = eta1pconf_low 'etalower
+    Sheets("Results tab").Range("zw5").Offset(it, 0) = eta1p 'eta
+    End If
+     
+ ' Sheets("Results tab").Range("m5").Offset(it, 0) = Sheets("Analysis").Range("N30") ' lowl   'Sheets("Results tab").Range("n5").Offset(it, 0) = Sheets("Analysis").Range("N32") ' Rell   'Sheets("Results tab").Range("o5").Offset(it, 0) = uppl not yet available, possible if needed to add calcs   'Sheets("Results tab").Range("V5").Offset(it, 0) = failrl 'failure rate
+ 'Sheets("Results tab").Range("p5").Offset(it, 0) = Sheets("Analysis").Range("N34") 'loww   'Sheets("Results tab").Range("q5").Offset(it, 0) = Sheets("Analysis").Range("N36") 'Relw   'Sheets("Results tab").Range("r5").Offset(it, 0) = uppw not yet available, possible if needed to add calcs   'Sheets("Results tab").Range("s5").Offset(it, 0) = Sheets("Analysis").Range("N26") ' lowb5w
+ 'Sheets("Results tab").Range("t5").Offset(it, 0) = Sheets("Analysis").Range("DN28") 'b5   'Sheets("Results tab").Range("u5").Offset(it, 0) = uppb5w not yet available, possible if needed to add calcs   'Sheets("Results tab").Range("zv5").Offset(it, 0) = Sheets("Analysis").Range("D7") 'beta   'Sheets("Results tab").Range("zw5").Offset(it, 0) = Sheets("Analysis").Range("n22") 'eta   'Sheets("Results tab").Range("zz5").Offset(it, 0) = Sheets("Analysis").Range("n24") 'etalower
+ '__________________________________________________________________________
+ ElseIf we = "Weibull" Then
+    betas = 0 'reset beta and confidence level for later 2 parameter checking routine (see For N = 1 To limit1, then We = Weibull and wepar = " 2 param" part
+    CIS = 0
+    
+    If wepar = "1 param" Then
+        If Nof = 0 Then
+        betas = Sheets("Analysis").Range("D7") ' beta value to use
+        CIS = Sheets("Analysis").Range("F3") * 100 'Confidence value to use
+        answer = MsgBox("Are the Beta and Conifdence levels correct?,    BETA = " & betas & "CONFIDENCE LEVEL = " & CIS, vbYesNo + vbQuestion, "Empty Sheet")
+            If answer = vbNo Then
+            MsgBox ("please enter the beta value into cell D7 and the confidence value into cell F3")
+            Exit Sub
+            End If
+        ElseIf Nof > 0 Then
+        betas = Sheets("Analysis").Range("D7") ' beta value to use
+        CIS = Sheets("Analysis").Range("F3") * 100 'Confidence value to use
+        answer6 = MsgBox("Are the Beta and Conifdence levels correct?,    BETA = " & betas & "CONFIDENCE LEVEL = " & CIS, vbYesNo + vbQuestion, "Empty Sheet")
+            If answer6 = vbNo Then
+            MsgBox ("please enter the beta value into cell D7 and the confidence value into cell F3")
+            Exit Sub
+            End If
+        Else:
+        End If
+        
+    ElseIf wepar = "2 param" Then
+        If Nof = 0 Then
+        betas = Sheets("Analysis").Range("D7") ' beta value to use
+        CIS = Sheets("Analysis").Range("F3") * 100 'Confidence value to use
+        answer2 = MsgBox("Are the Beta and Conifdence levels correct?,     BETA = " & betas & "CONFIDENCE LEVEL = " & CIS, vbYesNo + vbQuestion, "Empty Sheet")
+            If answer2 = vbNo Then
+            betas = InputBox("Enter beta value")
+            Sheets("Analysis").Range("D7") = betas
+            'OPTIONal enter error checking to see if beta and confidence values are entered correctly
+            CIS = InputBox("Enter confidence value as fraction ie 0.5 0.9 (between 0.5 and 0.9999")
+            Sheets("Analysis").Range("F3") = CIS
+            End If
+        ElseIf Nof = 1 Then
+        betas = Sheets("Analysis").Range("D7") ' beta value to use 'only beta as confidence value not needed with 1 failure
+        answer3 = MsgBox("Cannot run 2 parameter Weibull as only 1 failure, switching to 1 parameter weibull, is the Beta value correct?, BETA = " & betas, bYesNo + vbQuestion, "Empty Sheet")
+            If answer3 = vbNo Then
+            betas = InputBox("Enter beta value")
+            Sheets("Analysis").Range("D7") = betas
+            End If
+         Else: '2 or more faiures --> weibull will run without promts for beta and eta and will carry out true 2 parameter
+         hflag = 1
+         'have run once flag, ie a calculated Beta value is available
+         End If
+        
+    Else:
+    MsgBox ("you have weibull selected but not 1 param or 2 param, please run againg with 1 or 2 parameter selected (not mixed or 3 param")
+    Exit Sub
+    End If
+        
+    '__________________________________________________________________________
+'2P WEIBULL - USING RELIASOFT SYNTHESIS TOOL
+'Dim b5, Rell, Relw, uppl, lowl, uppw, loww, lowb5w, uppb5w As Variant
+    
+Call weibulclase.news2(b5, Rell, Relw, uppl, lowl, uppw, loww, lowb5w, uppb5w, failrl, beta, eta, bupp, blow, eupp, elow, betas, CIS, Nof, plotflag)
+'Call News(b5, Rell, Relw, uppl, lowl, uppw, loww, lowb5w, uppb5w, failrl, beta, eta, bupp, blow, eupp, elow)
+
+Sheets("Results tab").Range("m5").Offset(it, 0) = lowl
+Sheets("Results tab").Range("n5").Offset(it, 0) = Rell
+Sheets("Results tab").Range("o5").Offset(it, 0) = uppl
+Sheets("Results tab").Range("V5").Offset(it, 0) = failrl 'failure rate
+
+Sheets("Results tab").Range("p5").Offset(it, 0) = loww
+Sheets("Results tab").Range("q5").Offset(it, 0) = Relw
+Sheets("Results tab").Range("r5").Offset(it, 0) = uppw
+
+Sheets("Results tab").Range("s5").Offset(it, 0) = lowb5w
+Sheets("Results tab").Range("t5").Offset(it, 0) = b5
+Sheets("Results tab").Range("u5").Offset(it, 0) = uppb5w
+
+'analyis details
+Sheets("Results tab").Range("zv5").Offset(it, 0) = beta 'beta
+Sheets("Results tab").Range("zw5").Offset(it, 0) = eta 'eta
+Sheets("Analysis").Range("b12") = beta 'beta
+Sheets("Analysis").Range("b13") = eta 'eta
+Sheets("Results tab").Range("zx5").Offset(it, 0) = blow 'beta lower
+Sheets("Results tab").Range("zy5").Offset(it, 0) = bupp 'beta upper
+Sheets("Results tab").Range("zz5").Offset(it, 0) = elow 'eta lower
+Sheets("Results tab").Range("aaa5").Offset(it, 0) = eupp 'eta upper
+
+'Sheets("Results tab").Range("aab5").Offset(it, 0) =  'beta variance
+'Sheets("Results tab").Range("aac5").Offset(it, 0) =  ' eta variance
+    
+'__________________________________________________________________________
+Else:
+End If
+
+'OTHER TEST DETIALS
+Sheets("Results tab").Range("a5").Offset(it, 0) = Format(Now(), "MM/DD/YYYY") 'DATE
+Sheets("Results tab").Range("b5").Offset(it, 0) = Sheets("Notes").Range("m33") 'FAILURE MODE
+
+'analyis details
+Sheets("Results tab").Range("c5").Offset(it, 0) = Sheets("Notes").Range("n33") 'AGGRAVATION FACTOR
+Sheets("Results tab").Range("d5").Offset(it, 0) = Sheets("Notes").Range("b20")
+Sheets("Results tab").Range("e5").Offset(it, 0) = Sheets("Notes").Range("c20")
+Sheets("Results tab").Range("f5").Offset(it, 0) = Sheets("Notes").Range("d20")
+
+'Analysis Targets
+Sheets("Results tab").Range("g5").Offset(it, 0) = Sheets("Analysis").Range("e3") 'B TARGET
+Sheets("Results tab").Range("h5").Offset(it, 0) = Sheets("Analysis").Range("c5") 'LIFE TARGET
+Sheets("Results tab").Range("i5").Offset(it, 0) = Sheets("Analysis").Range("d5") ' WARRANTY TARGET
+Sheets("Results tab").Range("j5").Offset(it, 0) = Sheets("Analysis").Range("f3") 'CONFIDENCE %
+Sheets("Results tab").Range("k5").Offset(it, 0) = Sheets("Notes").Range("g20")
+Sheets("Results tab").Range("l5").Offset(it, 0) = Sheets("Notes").Range("h20")
+
+'acceleration factors
+Sheets("Results tab").Range("AAJ5").Offset(it, 0) = Sheets("Analysis").Range("h5") 'TEST AF's used?
+Sheets("Results tab").Range("AAK5").Offset(it, 0) = Sheets("Analysis").Range("j5") 'APPLICATION AF USED?
+    If Sheets("Analysis").Range("j5") = True Then
+    Sheets("Results tab").Range("AAl5").Offset(it, 0) = Sheets("Analysis").Range("l5") 'APPLICATION NAME
+    Sheets("Results tab").Range("AAM5").Offset(it, 0) = Sheets("Analysis").Range("k5") 'APPLICATION AF VALUE
+    End If
+Sheets("Results tab").Range("AAN5").Offset(it, 0) = Sheets("Analysis").Range("l3") 'KM or HRs
+
+'comments to identify 1 calculation from another
+Sheets("Results tab").Range("AAO5").Offset(it, 0) = Sheets("Analysis").Range("h3")
+
+'Call Plot(weibullin)
+'__________________________________________________________________
+Worksheets("Analysis").Select
+       
+      ' Dim Plot As New SynthesisAPI.WAPlots
+    
+'________________________________________________________________________
+'ANALYSE EACH COLUMN 1 AT A TIME (n by n)
+
+'For n = 1 To 75 'calc all 75 columns or...
+limit1 = Sheets("Analysis").Range("A7") '.....user selected for fault finding
+For N = 1 To limit1 '...user selected for fault finding
+    Nof = 0 ' reset failure count to 0
+'    box3(p, n + 3) = AF2 * Sheets("Data").Range("H" & box3(p, 1)).Offset(0, n)
+
+'RUN CALC AT 75 DISCREET COLUMN DATE TIMES
+    For p = 1 To UBound(box3) 'enter array data onto calcs sheet
+    Sheets("Analysis").Range("E" & j + 15 + p) = box3(p, N + 3) 'hours with aggrvation factor applied "(E" & P +14)
+    Sheets("Analysis").Range("G" & j + 15 + p) = box3(p, 0) 'test details ("G" & P +14)
+            
+            If we = "Weibayes" Then '1 PARAM WEIBULL/ WAIBAYES
+            Sheets("Analysis").Range("K" & j + 15 + p) = (Sheets("Analysis").Range("e" & j + 15 + p)) ^ Sheets("Analysis").Range("D7") ' t^beta,
+            End If
+            
+            If box3(p, 3) = "R" Then
+            Sheets("Analysis").Range("D" & j + 15 + p) = "S"
+            Else
+            Sheets("Analysis").Range("D" & j + 15 + p) = box3(p, 3) 'S or F ("D" & P + 14)
+                If box3(p, N + 3) < box3(p, 79) Then
+                Sheets("Analysis").Range("D" & j + 15 + p) = "S"
+                End If
+            End If
+        If box3(p, N + 3) = box3(p, 79) And box3(p, 3) = "F" Then
+        Nof = Nof + 1 'counting number of failures at this time stamp
+        End If
+    Next p
+    
+
+    If we = "Weibayes" Then
+    '__________________________________________________________________________
+    '1P WEIBAYES EQUATIONS
+    Rel_target = (100 - Sheets("Analysis").Range("E3")) / 100
+    life_target = Sheets("Analysis").Range("C5")
+    warranty_target = Sheets("Analysis").Range("D5")
+    Logr = Log(Rel_target)
+    LogE = Log(Exp(1))
+    minus_ln_reltaret = -(Logr / LogE)
+    beta1p = Sheets("Analysis").Range("d7")
+     Confidence1p = Sheets("Analysis").Range("f3")
+     failures1p = Sheets("Analysis").Range("B10")
+     CHISQa = Application.ChiInv((0.5), 2 * failures1p + 2)
+     CHISQconf = Application.ChiInv((1 - Confidence1p), 2 * failures1p + 2)
+     sum_t_beta = Application.Sum(Sheets("Analysis").Range("k16:K100")) ' max 100 points
+     
+         If sum_t_beta <> 0 Then
+         eta1p = (2 * sum_t_beta / CHISQa) ^ (1 / beta1p)
+         eta1pconf_low = (2 * sum_t_beta / CHISQconf) ^ (1 / beta1p)
+         bx = (minus_ln_reltaret ^ (1 / beta1p)) * eta1p
+         bxconf = (minus_ln_reltaret ^ (1 / beta1p)) * eta1pconf_low
+         rel_life = Exp(-((life_target / eta1p) ^ beta1p))
+         rel_life_low = Exp(-((life_target / eta1pconf_low) ^ beta1p))
+         rel_warranty = Exp(-((warranty_target / eta1p) ^ beta1p))
+         rel_warranty_low = Exp(-((warranty_target / eta1pconf_low) ^ beta1p))
+        
+        'values entered onto results tab
+         Sheets("Results tab").Range("w5").Offset(it, N - 1) = rel_life_low 'lowl
+         Sheets("Results tab").Range("ct5").Offset(it, N - 1) = rel_life 'Rell
+         Sheets("Results tab").Range("in5").Offset(it, N - 1) = rel_warranty_low 'loww
+         Sheets("Results tab").Range("lk5").Offset(it, N - 1) = rel_warranty 'Relw
+         Sheets("Results tab").Range("re5").Offset(it, N - 1) = bxconf 'lowb5w
+         Sheets("Results tab").Range("ub5").Offset(it, N - 1) = bx 'b5
+         End If
+       '__________________________________________________________________
+     ElseIf we = "Weibull" Then
+    
+       If wepar = "2 param" Then
+        
+            If Nof = 0 Then 'ADD ROUTINE HERE TO USE PREVIOUS ENTERED BETA VALUE AND CONFIDENCE INTERVALS
+                If hflag = 1 And hflag2 <> 1 Then ' ie have ran a 2parameter weibull with 2 or more failures with hflag1, hflag2 only need to enter Betas = beta
+                betas = beta
+                Sheets("Analysis").Range("D7") = betas
+                hflag2 = 1
+                hflag3 = 1 'flag to say have ran at least 1 2para with 0 or 1 as number of failures (ie ran 1 weibull 1parameter)
+                hflag4 = 1
+                End If
+            
+            ElseIf Nof = 1 Then
+                If hflag = 1 And hflag2 <> 1 Then 'hflag1 means with current hrs ran a 2parm (with Nof = 2 or more), hflag2 means this or above routine has ran once and no need to run again
+                betas = beta
+                Sheets("Analysis").Range("D7") = betas
+                hflag2 = 1
+                hflag3 = 1 'flag to say have ran at least 1 2para with 0 or 1 as number of failures (ie ran 1 weibull 1parameter)
+                hflag5 = 1
+                End If
+            'hflag= 1
+            ElseIf Nof = 2 Then
+                If hflag3 = 1 Then 'checks to see if the previous (N-1) was done at 0 or 1 number of failures hence, record date of first proper 2 p weibull
+                dateofswitch = Sheets("Data").Range("H22").Offset(0, N - 2) '.Value
+                End If
+            End If
+            
+        End If ' close routine for if wepar = "2 param" then
+    '___________________________________________CHANGE THIS___________________________
+        '___________________________________________CHANGE THIS___________________________
+        
+    '__________________________________________________________________________
+        '2P WEIBULL - USING RELIASOFT SYNTHESIS TOOL
+    Call weibulclase.news2(b5, Rell, Relw, uppl, lowl, uppw, loww, lowb5w, uppb5w, failrl, beta, eta, bupp, blow, eupp, elow, betas, CIS, Nof, plotflag)
+    '        Call News(b5, Rell, Relw, uppl, lowl, uppw, loww, lowb5w, uppb5w, failrl, beta, eta, bupp, blow, eupp, elow)
+    
+    Sheets("Results tab").Range("w5").Offset(it, N - 1) = lowl
+    Sheets("Results tab").Range("ct5").Offset(it, N - 1) = Rell
+    Sheets("Results tab").Range("fq5").Offset(it, N - 1) = uppl
+    
+    Sheets("Results tab").Range("in5").Offset(it, N - 1) = loww
+    Sheets("Results tab").Range("lk5").Offset(it, N - 1) = Relw
+    Sheets("Results tab").Range("oh5").Offset(it, N - 1) = uppw
+    
+    Sheets("Results tab").Range("re5").Offset(it, N - 1) = lowb5w
+    Sheets("Results tab").Range("ub5").Offset(it, N - 1) = b5
+    Sheets("Results tab").Range("wy5").Offset(it, N - 1) = uppb5w
+    '__________________________________________________________________________
+    Else: ' close routine for If we = "Weibayes" ElseIf we = "Weibull"
+    End If ' close routine for If we = "Weibayes" ElseIf we = "Weibull"
+
+Next N 'loop back for N = 1 to X number of calculations (user selected)
+Sheets("Results tab").Range("AAI5").Offset(it, 0) = dateofswitch
+
+error:
+'Application.ScreenUpdating = True
+End Sub
+Function ete1(box1 As Variant)
+
+Dim iupper As Integer
+Dim r As Integer
+'Dim box1 As Variant
+On Error GoTo error
+
+we = Sheets("Notes").Range("B20") 'weibayess, weibull etc has been selected
+iupper = 0
+
+With Sheets("Analysis").ListBoxes("List Box 25")
+    For r = 1 To .ListCount
+        If .Selected(r) Then
+            iupper = iupper + 1
+        End If
+    Next r
+    
+    ReDim box1(1 To iupper, 3) 'box 1 is redimension so length = no's tests selected, and 4 wide
+    iupper = 0
+    
+    For r = 1 To .ListCount
+        If .Selected(r) Then
+            iupper = iupper + 1
+            box1(iupper, 0) = .List(r) '1st column of box1 is test details
+            box1(iupper, 1) = r + 3     '2nd column is row number of test as stored in historic data sheet
+        End If
+    Next r
+
+End With
+
+'_______________________________________ FUTHER ROUTINE TO ADD HRS (WITH AGGRAVATION FACTOR IF SELECTED), ALSO S/F ETC
+For p = 1 To UBound(box1)
+        
+AF = Sheets("Analysis").Range("B1") + 1
+
+    If Sheets("Analysis").Range("H5") = False Then 'APPLY ACCELERATION FACTORS IF REQUIRED
+        AF3 = 1
+    Else
+        If Sheets("Historic Data").Range("C" & box1(p, 1)) = "" Then
+        MsgBox ("choose a test type for each test --> column C on Historic Data sheet")
+        GoTo error
+        End If
+        AF3 = Sheets("Historic Data").Range("I3").Offset(Sheets("Historic Data").Range("H" & box1(p, 1)), AF)
+    End If
+    
+    'HERE ADD THE ADDITIONAL APPLICATION AGGRAVATION FACTORS
+    If Sheets("Analysis").Range("J5") = False Then AF4 = 1 Else AF4 = Sheets("Analysis").Range("K5")
+    AF3 = AF3 * AF4
+    '_______________________________________________________
+    
+    
+    box1(p, 2) = AF3 * Sheets("Historic Data").Range("D" & box1(p, 1)) 'hours
+   
+    box1(p, 3) = Sheets("Historic Data").Range("E" & box1(p, 1)) '__ROUTINE TO ADD S OR F DEPENDING IN WHICH FAILURE MODE WAS SELECTED ON ANALYSIS FOR EVALUATION
+    If box1(p, 3) = "F" And Sheets("Data").Range("F" & box1(p, 1)) = Sheets("Notes").Range("M33") Then
+       box1(p, 3) = "F"
+    Else
+       box1(p, 3) = "S"
+    End If
+    
+Next p
+'____________________________________________________________
+'ROUTINE TO ADD RUNNNING DATA TO DATA SET - STARTS WITH CURRNET HOURS
+For p = 1 To UBound(box1) 'enter array data onto calcs sheet
+    Sheets("Analysis").Range("E" & 15 + p) = box1(p, 2) 'hours with aggrvation factor applied "(E" & P +14)
+    Sheets("Analysis").Range("G" & 15 + p) = box1(p, 0) 'test details ("G" & P +14)
+    Sheets("Analysis").Range("D" & 15 + p) = box1(p, 3)
+       
+        If we = "Weibayes" Then '1 PARAM WEIBULL/ WAIBAYES
+        Sheets("Analysis").Range("K" & 15 + p) = (Sheets("Analysis").Range("E" & 15 + p)) ^ Sheets("Analysis").Range("D7") ' t^beta,
+        End If
+Next p
+'____________________________________________________________
+
+error:
+ete1 = box1
+End Function
+
+'___________FUNCTIONS FOR ADDING DATA INTO ARRAYS, FOR USE IN RELIABILITY CALCULATIONS_______
+Function ete4(box4 As Variant)
+
+Dim iupper As Integer
+Dim r As Integer
+'Dim box1 As Variant
+On Error GoTo error
+
+iupper = 0
+
+With Sheets("Analysis").ListBoxes("List Box 26") 'listbox 26 is list of currently running tests on Data tab
+    
+    For r = 1 To .ListCount 'count how many testes have been selected for this analysis from Data tab
+        If .Selected(r) Then
+            iupper = iupper + 1
+        End If
+    Next r
+    
+    ReDim box4(1 To iupper, 79) 'box 4 is redimension so length = no's tests selected, and 79 wide
+    iupper = 0
+    
+    For r = 1 To .ListCount
+        If .Selected(r) Then
+            iupper = iupper + 1
+            box4(iupper, 0) = .List(r) '1st column of box1 is test details
+            box4(iupper, 1) = r + 22     '2nd column is row number of test as stored in historic data sheet
+        End If
+    Next r
+
+End With
+
+error:
+ete4 = box4
+End Function
+
+'____________________________________PLOTTING FUCNTIONS__________________
+Function Plot(weibullin)
+Worksheets("Analysis").Select
+'Add data set to the plot
+'Dim Plot As New SynthesisAPI.WAPlots
+Call Plot.AddDataset(weibullin)
+
+'Update the plot image
+Set Image1.Picture = Plot.CreatePlotVB6(GetSelectedPlotType)
+
+'Handle errors by hiding the plot and showing a message
+Image1.Visible = Not Plot.ErrorHappened
+	If Plot.ErrorHappened Then
+		MsgBox Plot.ErrorMessage
+	End If
+
+End Function
+'------------------------------------------------------------------------
+Private Function GetSelectedPlotType() As WAPlotType
+GetSelectedPlotType = WAPlotType.WAPlotType_Reliability
+
+End Function
+
+'____________________________________CLASS MODULE __________________
+'____________________________________________________________________________
+Public WithEvents weibullin As WeibullDataSet
+
+Option Explicit
+
+Public Sub news2(b5, Rell, Relw, uppl, lowl, uppw, loww, lowb5w, uppb5w, failrl, beta, eta, bupp, blow, eupp, elow, betas, CIS, Nof, plotflag) ' calculate the weibull with user specified confidence bounds
+
+Dim b, c, i, l, w, bper, cf, analysisdone, cbt, plot_sel As Integer
+Dim zerof As Integer
+Dim zeroci As Double
+
+zerof = 1 'this is the flag to say that calc was done with 0 failrues and hence will be repeated at 50% and user CI
+
+Set weibullin = New WeibullDataSet ' Weibull analysis settings
+Dim plot_set As WAPlotSettings ' not needed??
+
+Set plot_set = New WAPlotSettings 'weibull plot graph settings
+
+
+''' <summary>
+''' Allows for the cells to be changed programatically, but not by the user
+''' </summary>
+''' <remarks>Variable is checked by the ClearResults routine before clearing</remarks>
+Dim mClearResultsWhenChanged As Boolean
+weibullin.UseEvents = True 'Make sure we use use event instead of pooping up dialogs. --> ie goes to subroutine to enter beta and CI not user dialogue
+
+On Error GoTo error
+    
+'______settings for the calc from user input on spreadsheeT, ie 2 parameter,weibull etc
+weibullin.AnalysisSettings.Analysis = Worksheets("Notes").Range("C19").Value
+weibullin.AnalysisSettings.Parameters = Worksheets("Notes").Range("D19").Value
+weibullin.AnalysisSettings.Distribution = Worksheets("Notes").Range("b19").Value
+weibullin.AnalysisSettings.ConfBounds = Worksheets("Notes").Range("g19").Value
+weibullin.AnalysisSettings.SortBeforeCalculations = True
+weibullin.AnalysisSettings.UseSpecialSort = True
+'_________________________________________________________________________
+cf = 0
+
+'__________add failures and supsensions to the model____________________________
+Worksheets("Analysis").Select
+b = Worksheets("Analysis").Range("D10").Value 'no's of data points
+    For i = 1 To b
+        If Worksheets("Analysis").Range("E15").Offset(i, 0).Value > 0 Then 'ignore 0 values
+                If Range("D15").Offset(i, 0) = "S" Then
+                Call weibullin.AddSuspension(Worksheets("Analysis").Range("E15").Offset(i, 0).Value, 1)
+                Else
+                Call weibullin.AddFailure(Worksheets("Analysis").Range("E15").Offset(i, 0).Value, 1)
+                cf = cf + 1
+                End If
+        End If
+    Next i
+'_________________________________________________________________________
+            
+If cf = 0 Then
+zeroci = Sheets("Analysis").Range("F3")
+Sheets("Analysis").Range("F3") = 0.5
+zerof = 3
+Else
+zerof = 1
+End If
+weibullin.Calculate 'create the model
+
+
+'_________________________________set confidence bounds______________________
+'set the varaible (of type cModel) to the calculated model in the last step
+Dim Amodel As cModel
+Set Amodel = weibullin.FittedModel
+
+'Set the confidence level to user selected
+Dim ErrorMsg As String
+cbt = Worksheets("Notes").Range("H19").Value 'confidence bounds type
+c = Worksheets("Analysis").Range("F3") ' COnfidence required (50%,90% etc)
+Call Amodel.SetConfidenceLevel(c, cbt, False, ErrorMsg)
+
+'Calculate the bounds on the model's probability of failure at time = 100.
+'Dim ResultValue As BoundsValues
+'Set ResultValue = Amodel.Bounds_Unreliability(10000)
+'_________________________________________________________________________
+
+'_____________________________________________________________________
+
+'_______________RETURN RESULTS FROM MODEL_____________________________
+'set warranty and life targets, BX value
+l = Worksheets("Analysis").Range("C5") ' Life target in km
+w = Worksheets("Analysis").Range("D5") ' warranty target in km
+bper = 1 - (Worksheets("Analysis").Range("E3") / 100) ' B Value (B5,B10 etc)
+
+analysisdone = Worksheets("Analysis").Range("K3") 'analysis performed so far so don't overwrite data
+
+'results without confidnce
+b5 = Amodel.Time(bper)
+Rell = Amodel.Reliability(l) 'reliability at warranty period
+Relw = Amodel.Reliability(w) 'reliability at life
+failrl = Amodel.FailureRate(l) 'failure rate at life
+
+'results with confidnce
+    If zerof <> 3 Then ' ie if the calculation had 1 or more failures than can read values direct from model
+    uppl = Amodel.Bounds_Reliability(l).Upper 'reliability at life upper
+    lowl = Amodel.Bounds_Reliability(l).Lower 'reliability at life lower
+    uppw = Amodel.Bounds_Reliability(w).Upper 'reliability at warranty upper
+    loww = Amodel.Bounds_Reliability(w).Lower 'reliability at warranty lower
+    lowb5w = Amodel.Bounds_Time(bper).Lower 'time warranty lower
+    uppb5w = Amodel.Bounds_Time(bper).Upper 'time warranty upper
+    
+    Else ' ie calculation was done with o failures and needs to be repeated with user level confidence interval
+    Sheets("Analysis").Range("F3") = zeroci
+    weibullin.Calculate 're-create the model with confidence interval for 0 failures data set
+    Dim Bmodel As cModel
+    Set Bmodel = weibullin.FittedModel
+    uppl = 0 'reliability at life upper set to 0 as will not calculate this for 0 failures
+    lowl = Bmodel.Reliability(l) 'reliability at life lower
+    uppw = 0 'reliability at warranty upper set to 0 as will not calculate this for 0 failures
+    loww = Bmodel.Reliability(w) 'reliability at warranty lower
+    lowb5w = Bmodel.Time(bper) 'time warranty lower
+    uppb5w = 0 'time warranty upper set to 0 as will not calculate this for 0 failures
+    
+    End If
+
+
+'_______________record beta and eta values that were used for the model_______
+Dim params() As ParamValues
+params = Amodel.Parameters
+beta = params(0).Value 'beta
+eta = params(1).Value 'eat
+'_______________record beta and eta values with confidence that were used for the model_______
+Dim boundsparams() As ParamBoundsValues
+If cf <> 0 Then
+boundsparams = Amodel.Bounds_Parameters
+bupp = boundsparams(0).Upper ' beta upper
+blow = boundsparams(0).Lower ' beta lower
+eupp = boundsparams(1).Upper ' alpha uppper
+elow = boundsparams(1).Lower ' alpha lower
+Else
+bupp = 0 ' beta upper set to 0 as will not calculate this
+blow = 0 ' beta lower
+eupp = 0 ' alpha uppper set to 0 as will not calculate this
+elow = 0 ' alpha lower
+End If
+'________________________________________________________________________
+
+'__________only do this the first time round (ie only shows the graph for the currnet hrs______________
+
+If plotflag = 0 Then
+  'Declare a new WAPlots object.
+   Dim WPlot As New WAPlots
+
+plot_set.ConfidenceLevel = c
+plot_set.ConfBounds_TypesSelected = Worksheets("Notes").Range("T32").Value
+plot_set.ConfBounds_SideSelected = Worksheets("Notes").Range("H19").Value
+
+
+  'Add the analyzed data set to the plot.
+  
+   Call WPlot.AddDataset(weibullin)
+
+  'Create a probability plot and display it in an Image control in the current Excel sheet.
+  plot_sel = Sheets("Notes").Range("P32")
+    
+  
+ActiveSheet.Image1.Picture = WPlot.CreatePlotVB6(plot_sel) ' 0 = WAPllotType_probability, 1 = reliability, 3 = pdf etc
+ActiveSheet.Image1.Picture = WPlot.CreatePlotVB6(plot_sel, plot_set) ' 0 = WAPllotType_probability, 1 = reliability, 3 = pdf etc
+'ActiveSheet.Image1.Picture = WPlot.CreatePlotVB6( ' 0 = WAPllotType_probability, 1 = reliability, 3 = pdf etc
+  
+'Resize the picture (optional).
+  ' ActiveSheet.Image1.Height = 400
+   'ActiveSheet.Image1.Width = 460
+   plotflag = 1
+End If
+
+error:
+
+
+End Sub
+
+'_________routine to set beta for 1p weibull, or 2p weibull with 0 or 1 failures. Also for setting Confidence for 2p weibull with 0 failures
+Private Sub weibullin_GetDistrParameters(ByVal sMsg As String, ByVal InputInfo As SynthesisAPI.DistrParametersInput, Cancel As Boolean)
+    'These are all parameters that need input. You can check the number of them using InputInfo.ParamCount
+    Dim all_params() As ParamInputInfo
+    all_params = InputInfo.params
+    Select Case weibullin.AnalysisSettings.Distribution
+        Case WeibullSolverDistribution_Weibull
+            '1st parameter is beta, 2nd is eta. Set them to whatever values you want.
+        all_params(0).Value = Sheets("Analysis").Range("D7")
+            If InputInfo.ParamCount = 2 Then
+            all_params(1).Value = Sheets("Analysis").Range("F3") * 100 ' if no failures then model is set to 1 parameter model and this value is the confidence level
+            End If
+    End Select
+End Sub
+
+
+
+
