@@ -1,0 +1,29 @@
+Option Explicit
+
+Sub Sample()
+    Dim strFolder As String, strFile As String
+    Dim MyData As String, strData() As String
+    Dim count As Integer
+    Dim check As String
+    count = 0
+    
+    strFolder = "C:\Data\SPE16_P180740_0564671ANY\16 Oct\2. Corrected Data\" 'update this to the folde of interest
+    strFile = Dir(strFolder & "*.xls")
+
+    Do While strFile <> ""
+        count = count + 1
+        Open strFolder & strFile For Binary As #1
+        MyData = Space$(2000000) '(LOF(1))
+        Get #1, , MyData
+        Close #1
+
+        strData() = Split(MyData, vbCrLf)
+        check = strData(11)
+        If InStr(check, "ommen") = 0 Then
+        Debug.Print strFile
+        End If
+    
+    strFile = Dir
+    Loop
+Debug.Print count
+End Sub
